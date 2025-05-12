@@ -1,12 +1,15 @@
 package com.example.taller3
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Looper
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -16,6 +19,7 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -29,6 +33,7 @@ class OSMMapsActivity : AppCompatActivity() {
     private lateinit var map: MapView
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private lateinit var auth: FirebaseAuth
 
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
@@ -40,6 +45,9 @@ class OSMMapsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_osmmaps)
+
+        // Inicializar Firebase Auth
+        auth = FirebaseAuth.getInstance()
 
         // Configuración inicial de OSMDroid
         Configuration.getInstance().load(this, getSharedPreferences("osm_prefs", MODE_PRIVATE))
@@ -62,20 +70,46 @@ class OSMMapsActivity : AppCompatActivity() {
         requestLocationPermission()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.baseline_menu_24, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_logout -> {
+                // Cerrar sesión
+                auth.signOut()
+                val intent = Intent(this, MainActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                startActivity(intent)
+                finish()
+                true
+            }
+            R.id.menu_available -> {
+                Toast.makeText(this, "Estado: Disponible", Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.menu_offline -> {
+                Toast.makeText(this, "Estado: Desconectado", Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
     private fun requestLocationPermission() {
         when {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED -> {
-                // Permiso ya concedido, iniciar actualizaciones de ubicación
                 startLocationUpdates()
             }
             ActivityCompat.shouldShowRequestPermissionRationale(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) -> {
-                // Explicar al usuario por qué necesitamos el permiso
                 Toast.makeText(
                     this,
                     "Los permisos de ubicación son necesarios para mostrar tu posición",
@@ -88,7 +122,6 @@ class OSMMapsActivity : AppCompatActivity() {
                 )
             }
             else -> {
-                // Solicitar permiso directamente
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
@@ -108,7 +141,7 @@ class OSMMapsActivity : AppCompatActivity() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
-                // Aquí puedes manejar las actualizaciones de ubicación si lo necesitas
+                // Manejo de actualizaciones de ubicación
             }
         }
 
