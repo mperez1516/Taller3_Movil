@@ -4,142 +4,130 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.ArrayAdapter
-import android.widget.ListView
-import android.widget.Toast
+import android.view.View
+import android.view.ViewGroup
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.*
 import com.google.firebase.ktx.Firebase
 
 class ListaUsuariosActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private lateinit var usersListView: ListView
-    private val database = FirebaseDatabase.getInstance()
-    private val usersList = mutableListOf<String>()
+    private lateinit var database: FirebaseDatabase
+    private lateinit var listView: ListView
+    private lateinit var adapter: UserAdapter
+    private val usersList = mutableListOf<User>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_lista_usuarios)
 
         auth = Firebase.auth
+        database = FirebaseDatabase.getInstance()
+        listView = findViewById(R.id.usersList)
 
-        // Configurar Toolbar
-        val toolbar: Toolbar = findViewById(R.id.toolbar)
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
-        supportActionBar?.title = "Usuarios activos"
 
-        // Inicializar ListView
-        usersListView = findViewById(R.id.usersList)
+        adapter = UserAdapter()
+        listView.adapter = adapter
 
-        // Cargar usuarios desde Firebase
-        loadActiveUsers()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val selectedUser = usersList[position]
+            val intent = Intent(this, DetalleUsuarioActivity::class.java)
+            intent.putExtra("userId", selectedUser.userId)
+            startActivity(intent)
+        }
+
+        loadUsers()
+        setupUserStatusListener()
     }
 
-    private fun loadActiveUsers() {
+    private fun loadUsers() {
         val usersRef = database.getReference("users")
 
         usersRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 usersList.clear()
+
                 for (userSnapshot in snapshot.children) {
-                    val email = userSnapshot.child("email").getValue(String::class.java)
-                    val status = userSnapshot.child("status").getValue(String::class.java)
-
-                    // Solo mostrar usuarios activos que no sean el usuario actual
-                    if (status == "available" && email != auth.currentUser?.email) {
-                        email?.let { usersList.add(it) }
+                    if (userSnapshot.key != auth.currentUser?.uid) {
+                        val user = User(
+                            userId = userSnapshot.key ?: "",
+                            nombre = userSnapshot.child("name").getValue(String::class.java) ?: "",
+                            email = userSnapshot.child("email").getValue(String::class.java) ?: "",
+                            imageUrl = userSnapshot.child("imageUrl").getValue(String::class.java) ?: "",
+                            status = userSnapshot.child("status").getValue(String::class.java) ?: "offline"
+                        )
+                        if (user.status == "available") {
+                            usersList.add(user)
+                        }
                     }
                 }
-
-                // Configurar el adaptador para el ListView
-                val adapter = ArrayAdapter(
-                    this@ListaUsuariosActivity,
-                    android.R.layout.simple_list_item_1,
-                    usersList
-                )
-                usersListView.adapter = adapter
-
-                // Configurar click listener para los items de la lista
-                usersListView.setOnItemClickListener { _, _, position, _ ->
-                    val selectedUserEmail = usersList[position]
-                    // Aquí puedes implementar la lógica para mostrar la ubicación del usuario seleccionado
-                    Toast.makeText(
-                        this@ListaUsuariosActivity,
-                        "Mostrar ubicación de $selectedUserEmail",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // Ejemplo: iniciar actividad de mapa con el usuario seleccionado
-                    val intent = Intent(this@ListaUsuariosActivity, OSMMapsActivity::class.java).apply {
-                        putExtra("selected_user_email", selectedUserEmail)
-                    }
-                    startActivity(intent)
-                }
+                adapter.notifyDataSetChanged()
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Toast.makeText(
-                    this@ListaUsuariosActivity,
-                    "Error al cargar usuarios: ${error.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@ListaUsuariosActivity, "Error al cargar usuarios", Toast.LENGTH_SHORT).show()
             }
         })
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+    private fun setupUserStatusListener() {
+        val usersRef = database.getReference("users")
+
+        usersRef.addChildEventListener(object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                val userId = snapshot.key
+                val newStatus = snapshot.child("status").getValue(String::class.java)
+                val userName = snapshot.child("name").getValue(String::class.java)
+
+                if (userId != auth.currentUser?.uid && newStatus == "available") {
+                    userName?.let {
+                        Toast.makeText(this@ListaUsuariosActivity, "$it acaba de conectarse", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        })
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.baseline_menu_24, menu)
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.menu_logout -> {
-                auth.signOut()
-                val intent = Intent(this, MainActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-                startActivity(intent)
-                finish()
-                true
-            }
-            R.id.menu_usuarios -> {
-                // Ya estamos en esta actividad, no necesitamos hacer nada
-                true
-            }
-            R.id.menu_available -> {
-                setAvailable()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
+        return super.onOptionsItemSelected(item)
     }
 
-    private fun setAvailable() {
-        val currentUser = auth.currentUser
-        currentUser?.let { user ->
-            val userRef = database.getReference("users").child(user.uid)
-            userRef.child("status").setValue("available")
-                .addOnSuccessListener {
-                    Toast.makeText(
-                        this,
-                        "Estado cambiado a disponible",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-                .addOnFailureListener { e ->
-                    Toast.makeText(
-                        this,
-                        "Error al cambiar estado: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+    // Adaptador personalizado para ListView
+    inner class UserAdapter : BaseAdapter() {
+        override fun getCount(): Int = usersList.size
+        override fun getItem(position: Int): Any = usersList[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val view = convertView ?: layoutInflater.inflate(R.layout.item_user, parent, false)
+            val user = usersList[position]
+
+            val nameTextView = view.findViewById<TextView>(R.id.tvUserName)
+            val emailTextView = view.findViewById<TextView>(R.id.tvUserEmail)
+            val imageView = view.findViewById<ImageView>(R.id.ivUserImage)
+
+            nameTextView.text = user.nombre
+            emailTextView.text = user.email
+            imageView.setImageResource(R.drawable.ic_default_user) 
+
+            return view
         }
     }
 }

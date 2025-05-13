@@ -40,6 +40,7 @@ class OSMMapsActivity : AppCompatActivity() {
         private const val DEFAULT_ZOOM_LEVEL = 15.0
         private const val HOSPITAL_LAT = 4.628308  // Hospital San Ignacio
         private const val HOSPITAL_LON = -74.064929
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
