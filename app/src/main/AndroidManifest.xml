@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -32,13 +34,10 @@
             android:name=".ListaUsuariosActivity"
             android:exported="false" />
 
-        <activity
-            android:name=".DetalleUsuarioActivity"
-            android:exported="false" />
+        <activity android:name=".DetalleUsuarioActivity" />
 
         <activity
-            android:name=".DistanciaUsuarioActivity"
-            android:exported="false" />
+            android:name=".DistanciaUsuarioActivity" />
         <activity
             android:name=".OSMMapsActivity"
             android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"

@@ -36,13 +36,6 @@ class ListaUsuariosActivity : AppCompatActivity() {
         adapter = UserAdapter()
         listView.adapter = adapter
 
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val selectedUser = usersList[position]
-            val intent = Intent(this, DetalleUsuarioActivity::class.java)
-            intent.putExtra("userId", selectedUser.userId)
-            startActivity(intent)
-        }
-
         loadUsers()
         setupUserStatusListener()
     }
@@ -122,10 +115,18 @@ class ListaUsuariosActivity : AppCompatActivity() {
             val nameTextView = view.findViewById<TextView>(R.id.tvUserName)
             val emailTextView = view.findViewById<TextView>(R.id.tvUserEmail)
             val imageView = view.findViewById<ImageView>(R.id.ivUserImage)
+            val btnVerPosicion = view.findViewById<Button>(R.id.btnVerPosicion)
 
             nameTextView.text = user.nombre
             emailTextView.text = user.email
             imageView.setImageResource(R.drawable.ic_default_user)
+
+            // Configurar el listener del botón
+            btnVerPosicion.setOnClickListener {
+                val intent = Intent(this@ListaUsuariosActivity, DetalleUsuarioActivity::class.java)
+                intent.putExtra("userId", user.userId)
+                startActivity(intent)
+            }
 
             return view
         }
