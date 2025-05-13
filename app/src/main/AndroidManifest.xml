@@ -31,6 +31,14 @@
         <activity
             android:name=".ListaUsuariosActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".DetalleUsuarioActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".DistanciaUsuarioActivity"
+            android:exported="false" />
         <activity
             android:name=".OSMMapsActivity"
             android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"
