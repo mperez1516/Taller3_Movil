@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Looper
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
@@ -20,6 +21,10 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -34,21 +39,25 @@ class OSMMapsActivity : AppCompatActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var auth: FirebaseAuth
+    private lateinit var database: DatabaseReference
+    private var currentStatus: String = "disconnected" // Estado inicial
 
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
         private const val DEFAULT_ZOOM_LEVEL = 15.0
         private const val HOSPITAL_LAT = 4.628308  // Hospital San Ignacio
         private const val HOSPITAL_LON = -74.064929
-
+        private const val STATUS_AVAILABLE = "available"
+        private const val STATUS_DISCONNECTED = "disconnected"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_osmmaps)
 
-        // Inicializar Firebase Auth
-        auth = FirebaseAuth.getInstance()
+        // Inicializar Firebase Auth y Database
+        auth = Firebase.auth
+        database = Firebase.database.reference
 
         // Configuración inicial de OSMDroid
         Configuration.getInstance().load(this, getSharedPreferences("osm_prefs", MODE_PRIVATE))
@@ -69,6 +78,9 @@ class OSMMapsActivity : AppCompatActivity() {
 
         // Solicitar permisos de ubicación
         requestLocationPermission()
+
+        // Inicializar estado en Firebase
+        updateUserStatus(STATUS_DISCONNECTED)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -88,10 +100,12 @@ class OSMMapsActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_available -> {
+                updateUserStatus(STATUS_AVAILABLE)
                 Toast.makeText(this, "Estado: Disponible", Toast.LENGTH_SHORT).show()
                 true
             }
             R.id.menu_offline -> {
+                updateUserStatus(STATUS_DISCONNECTED)
                 Toast.makeText(this, "Estado: Desconectado", Toast.LENGTH_SHORT).show()
                 true
             }
@@ -103,6 +117,21 @@ class OSMMapsActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun updateUserStatus(status: String) {
+        currentStatus = status
+        val userId = auth.currentUser?.uid ?: return
+
+        database.child("users").child(userId).child("status")
+            .setValue(status)
+            .addOnSuccessListener {
+                Log.d("OSMMapsActivity", "Estado actualizado: $status")
+            }
+            .addOnFailureListener { e ->
+                Log.e("OSMMapsActivity", "Error al actualizar estado", e)
+                Toast.makeText(this, "Error al actualizar estado", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun requestLocationPermission() {
