@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">Taller3</string>
+    <string name="title">Usuarios Disponibles</string>
+
+
 </resources>
