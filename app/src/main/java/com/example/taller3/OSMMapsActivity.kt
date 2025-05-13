@@ -38,7 +38,7 @@ class OSMMapsActivity : AppCompatActivity() {
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
         private const val DEFAULT_ZOOM_LEVEL = 15.0
-        private const val HOSPITAL_LAT = 4.628308  // Coordenadas del Hospital San Ignacio
+        private const val HOSPITAL_LAT = 4.628308  // Hospital San Ignacio
         private const val HOSPITAL_LON = -74.064929
     }
 
