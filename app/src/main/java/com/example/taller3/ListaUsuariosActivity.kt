@@ -125,7 +125,7 @@ class ListaUsuariosActivity : AppCompatActivity() {
 
             nameTextView.text = user.nombre
             emailTextView.text = user.email
-            imageView.setImageResource(R.drawable.ic_default_user) 
+            imageView.setImageResource(R.drawable.ic_default_user) 4
 
             return view
         }
