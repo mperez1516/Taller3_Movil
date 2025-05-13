@@ -94,6 +94,12 @@ class OSMMapsActivity : AppCompatActivity() {
                 Toast.makeText(this, "Estado: Desconectado", Toast.LENGTH_SHORT).show()
                 true
             }
+            R.id.menu_usuarios -> {
+                val intent = Intent(this, ListaUsuariosActivity::class.java)
+                Toast.makeText(this, "Usuarios disponibles", Toast.LENGTH_SHORT).show()
+                startActivity(intent)
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }

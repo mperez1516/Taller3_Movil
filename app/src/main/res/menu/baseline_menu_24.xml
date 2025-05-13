@@ -22,4 +22,12 @@
         android:icon="@drawable/baseline_menu_24"
         android:title="Cerrar sesión"
         app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_usuarios"
+        android:icon="@drawable/ic_usuarios"
+        android:title="Ver usuarios disponibles"
+        app:showAsAction="always"/>
+
+
 </menu>
