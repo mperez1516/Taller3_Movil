@@ -1,14 +1,20 @@
 package com.example.taller3
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.location.Location
 import android.os.Bundle
 import android.os.Looper
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.taller3.databinding.ActivityRegisterBinding
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -34,6 +40,15 @@ class RegisterActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "RegisterActivity"
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+        private const val CAMERA_PERMISSION_REQUEST_CODE = 1002
+    }
+
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            Toast.makeText(this, "Foto tomada exitosamente", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,13 +70,50 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         binding.photoButton.setOnClickListener {
-            // TODO: Implementar cámara/galería en el futuro
-            Toast.makeText(this, "Función de cámara por implementar", Toast.LENGTH_SHORT).show()
+            checkCameraPermission()
         }
 
         binding.registerButton.setOnClickListener {
             registerUser()
         }
+    }
+
+    private fun checkCameraPermission() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                openCamera()
+            }
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.CAMERA
+            ) -> {
+                Toast.makeText(
+                    this,
+                    "Se necesita permiso de cámara para tomar tu foto de perfil",
+                    Toast.LENGTH_LONG
+                ).show()
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.CAMERA),
+                    CAMERA_PERMISSION_REQUEST_CODE
+                )
+            }
+            else -> {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.CAMERA),
+                    CAMERA_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    private fun openCamera() {
+        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        cameraLauncher.launch(cameraIntent)
     }
 
     private fun setupLocationUpdates() {
@@ -128,6 +180,17 @@ class RegisterActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
+            CAMERA_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    openCamera()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Permiso de cámara denegado",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
             LOCATION_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     startLocationUpdates()
@@ -170,7 +233,6 @@ class RegisterActivity : AppCompatActivity() {
                         // Actualizar perfil con nombre completo
                         val profileUpdates = userProfileChangeRequest {
                             displayName = "$name $lastName"
-                            // photoUri se establecerá más adelante cuando implementemos las fotos
                         }
 
                         user?.updateProfile(profileUpdates)?.addOnCompleteListener { profileTask ->
@@ -218,8 +280,7 @@ class RegisterActivity : AppCompatActivity() {
             "email" to email,
             "idNumber" to idNumber,
             "latitude" to currentLocation?.latitude,
-            "longitude" to currentLocation?.longitude,
-            "profileImageUrl" to "" // Se actualizará cuando implementemos Storage
+            "longitude" to currentLocation?.longitude
         )
 
         database.child("users").child(userId).setValue(user)
