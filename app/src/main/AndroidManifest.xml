@@ -19,6 +19,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" />
 
     <application
+        android:name=".MyApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -46,7 +47,13 @@
             android:name=".OSMMapsActivity"
             android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"
             android:exported="false" />
-        
+
+        <service
+            android:name=".UsuariosDisponiblesService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            tools:targetApi="q"/>
 
         <activity
             android:name=".MainActivity"
