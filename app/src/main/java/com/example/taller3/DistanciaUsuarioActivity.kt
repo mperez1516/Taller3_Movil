@@ -1,14 +1,20 @@
 package com.example.taller3
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
-import android.os.Environment
 import android.os.Looper
+import android.provider.Settings
+import android.util.Log
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -21,7 +27,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.ScaleBarOverlay
-import org.osmdroid.views.overlay.compass.CompassOverlay
 import java.io.File
 
 class DistanciaUsuarioActivity : AppCompatActivity() {
@@ -32,24 +37,54 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
     private lateinit var database: FirebaseDatabase
     private lateinit var auth: FirebaseAuth
     private lateinit var tvDistancia: TextView
+    private lateinit var tvNombreUsuario: TextView
 
     private var currentLocation: GeoPoint? = null
     private var trackedUserLocation: GeoPoint? = null
     private var trackedUserMarker: Marker? = null
     private var currentUserMarker: Marker? = null
-    private lateinit var userId: String
+    private lateinit var userIdToTrack: String
+    private var nombreUsuarioSeguido: String = ""
+
+    private val locationPermissionRequest = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        when {
+            permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) -> {
+                if (isLocationEnabled()) {
+                    startLocationUpdates()
+                    startTrackingUser()
+                } else {
+                    showLocationSettingsPrompt()
+                }
+            }
+            permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
+                if (isLocationEnabled()) {
+                    startLocationUpdates()
+                    startTrackingUser()
+                } else {
+                    showLocationSettingsPrompt()
+                }
+            }
+            else -> {
+                Toast.makeText(this, "Permisos de ubicación requeridos", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
 
     companion object {
-        private const val LOCATION_PERMISSION_REQUEST_CODE = 1
+        private const val TAG = "DistanciaUsuarioAct"
+        private const val DEFAULT_ZOOM_LEVEL = 15.0
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Configuración crítica de OSMDroid ANTES de setContentView
+        // Configuración OSMDroid
         Configuration.getInstance().apply {
             userAgentValue = packageName
-            osmdroidBasePath = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "osmdroid")
+            osmdroidBasePath = File(getExternalFilesDir(null), "osmdroid")
             osmdroidTileCache = File(osmdroidBasePath, "tiles")
             load(this@DistanciaUsuarioActivity, getSharedPreferences("osm_prefs", MODE_PRIVATE))
         }
@@ -58,6 +93,7 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
 
         // Inicializar vistas
         tvDistancia = findViewById(R.id.tvDistancia)
+        tvNombreUsuario = findViewById(R.id.tvNombreUsuario)
         map = findViewById(R.id.osmMap)
 
         // Inicializar Firebase
@@ -65,52 +101,99 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
         database = FirebaseDatabase.getInstance()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        // Obtener userId del intent
-        userId = intent.getStringExtra("userId") ?: run {
-            Toast.makeText(this, "Usuario no válido", Toast.LENGTH_SHORT).show()
+        // Obtener ID del usuario a rastrear
+        userIdToTrack = intent.getStringExtra("userId") ?: run {
+            Toast.makeText(this, "ID de usuario no válido", Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
         initializeMap()
-        requestLocationPermission()
+        checkLocationPermission()
+        loadUserInfo()
     }
 
     private fun initializeMap() {
-        // Configuración básica del mapa
         map.setTileSource(TileSourceFactory.MAPNIK)
         map.setMultiTouchControls(true)
-        map.minZoomLevel = 3.0
-        map.maxZoomLevel = 19.0
-        map.controller.setZoom(15.0)
+        map.controller.setZoom(DEFAULT_ZOOM_LEVEL)
 
-        // Overlays útiles
-        val compassOverlay = CompassOverlay(this, map).apply {
-            enableCompass()
-        }
-        map.overlays.add(compassOverlay)
-
-        val scaleBarOverlay = ScaleBarOverlay(map).apply {
+        // Configurar overlay de escala
+        map.overlays.add(ScaleBarOverlay(map).apply {
             setCentred(true)
             setScaleBarOffset(resources.displayMetrics.widthPixels / 2, 10)
+        })
+    }
+
+    private fun checkLocationPermission() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                if (isLocationEnabled()) {
+                    startLocationUpdates()
+                    startTrackingUser()
+                } else {
+                    showLocationSettingsPrompt()
+                }
+            }
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) -> {
+                showPermissionRationale()
+            }
+            else -> {
+                requestLocationPermission()
+            }
         }
-        map.overlays.add(scaleBarOverlay)
+    }
+
+    private fun showPermissionRationale() {
+        AlertDialog.Builder(this)
+            .setTitle("Permiso de ubicación necesario")
+            .setMessage("Esta aplicación necesita acceso a tu ubicación para mostrar la distancia entre usuarios.")
+            .setPositiveButton("OK") { _, _ ->
+                requestLocationPermission()
+            }
+            .setNegativeButton("Cancelar") { _, _ ->
+                Toast.makeText(this, "La funcionalidad de ubicación estará limitada", Toast.LENGTH_SHORT).show()
+            }
+            .create()
+            .show()
     }
 
     private fun requestLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                LOCATION_PERMISSION_REQUEST_CODE
+        locationPermissionRequest.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
             )
-        } else {
-            startLocationUpdates()
-            startTrackingUser()
-        }
+        )
     }
 
+    private fun isLocationEnabled(): Boolean {
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
+
+    private fun showLocationSettingsPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Servicios de ubicación desactivados")
+            .setMessage("Por favor active los servicios de ubicación para usar esta función")
+            .setPositiveButton("Configuración") { _, _ ->
+                startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            }
+            .setNegativeButton("Cancelar") { _, _ ->
+                Toast.makeText(this, "No se puede mostrar la ubicación sin los servicios activados", Toast.LENGTH_LONG).show()
+            }
+            .create()
+            .show()
+    }
+
+    @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.create().apply {
             interval = 5000
@@ -118,24 +201,52 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         }
 
+        // Obtener última ubicación conocida primero
+        fusedLocationClient.lastLocation.addOnSuccessListener { lastLocation ->
+            lastLocation?.let {
+                currentLocation = GeoPoint(it.latitude, it.longitude)
+                updateCurrentUserMarker()
+                saveCurrentLocationToDatabase(it.latitude, it.longitude)
+                updateDistanceAndCenterMap()
+            } ?: run {
+                Log.w(TAG, "No se pudo obtener la última ubicación conocida")
+            }
+        }
+
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
                     currentLocation = GeoPoint(location.latitude, location.longitude)
                     updateCurrentUserMarker()
-                    updateDistance()
                     saveCurrentLocationToDatabase(location.latitude, location.longitude)
+                    updateDistanceAndCenterMap()
+                } ?: run {
+                    Log.w(TAG, "Location result is null")
+                }
+            }
+
+            override fun onLocationAvailability(availability: LocationAvailability) {
+                if (!availability.isLocationAvailable) {
+                    Log.w(TAG, "Location services are not available")
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@DistanciaUsuarioActivity,
+                            "Ubicación no disponible. Active GPS o conexión de red",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
         }
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            == PackageManager.PERMISSION_GRANTED) {
+        try {
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper()
             )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al solicitar actualizaciones de ubicación: ${e.message}")
         }
     }
 
@@ -146,31 +257,57 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
                     "latitude" to latitude,
                     "longitude" to longitude
                 )
-            )
+            ).addOnFailureListener { e ->
+                Log.e(TAG, "Error al guardar ubicación: ${e.message}")
+            }
         }
     }
 
     private fun startTrackingUser() {
-        database.getReference("users").child(userId).child("location")
+        database.getReference("users").child(userIdToTrack).child("location")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val lat = snapshot.child("latitude").getValue(Double::class.java) ?: 0.0
-                    val lng = snapshot.child("longitude").getValue(Double::class.java) ?: 0.0
+                    try {
+                        val latitude = snapshot.child("latitude").getValue(Double::class.java)
+                        val longitude = snapshot.child("longitude").getValue(Double::class.java)
 
-                    if (lat != 0.0 && lng != 0.0) {
-                        trackedUserLocation = GeoPoint(lat, lng)
+                        if (latitude == null || longitude == null) {
+                            showLocationError("El usuario no ha compartido su ubicación")
+                            return
+                        }
+
+                        trackedUserLocation = GeoPoint(latitude, longitude)
                         updateTrackedUserMarker()
-                        updateDistance()
-                        centerMapBetweenLocations()
+                        updateDistanceAndCenterMap()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error al procesar ubicación: ${e.message}")
+                        showLocationError("Error al leer ubicación")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    Toast.makeText(this@DistanciaUsuarioActivity,
-                        "Error al rastrear usuario: ${error.message}",
-                        Toast.LENGTH_SHORT).show()
+                    Log.e(TAG, "Error al rastrear usuario: ${error.message}")
+                    showLocationError("Error de conexión con Firebase")
                 }
             })
+    }
+
+    private fun showLocationError(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            tvDistancia.text = message
+            trackedUserLocation = null
+            updateTrackedUserMarker()
+        }
+    }
+
+    private fun updateDistanceAndCenterMap() {
+        if (currentLocation != null && trackedUserLocation != null) {
+            updateDistance()
+            centerMapBetweenLocations()
+        } else if (currentLocation != null) {
+            map.controller.setCenter(currentLocation)
+        }
     }
 
     private fun centerMapBetweenLocations() {
@@ -180,24 +317,14 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
                 val centerLon = (current.longitude + tracked.longitude) / 2
                 map.controller.setCenter(GeoPoint(centerLat, centerLon))
 
-                // Ajustar zoom para que ambos marcadores sean visibles
-                val zoomLevel = calculateZoomLevel(current, tracked)
+                val distance = calculateDistance(current, tracked)
+                val zoomLevel = when {
+                    distance > 5000 -> 12.0
+                    distance > 1000 -> 14.0
+                    else -> 16.0
+                }
                 map.controller.setZoom(zoomLevel)
             }
-        }
-    }
-
-    private fun calculateZoomLevel(point1: GeoPoint, point2: GeoPoint): Double {
-        val distance = calculateDistance(point1, point2)
-        return when {
-            distance > 10000 -> 10.0
-            distance > 5000 -> 11.0
-            distance > 2000 -> 12.0
-            distance > 1000 -> 13.0
-            distance > 500 -> 14.0
-            distance > 200 -> 15.0
-            distance > 100 -> 16.0
-            else -> 17.0
         }
     }
 
@@ -208,12 +335,7 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
                     position = location
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     title = "Mi ubicación"
-
-                    // Configurar icono con tamaño adecuado
-                    ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_blue_marker)?.let { icon ->
-                        icon.setBounds(0, 0, 80, 80)
-                        setIcon(icon)
-                    }
+                    icon = ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_blue_marker)
                 }
                 map.overlays.add(currentUserMarker)
             } else {
@@ -229,19 +351,21 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
                 trackedUserMarker = Marker(map).apply {
                     position = location
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    title = "Usuario seguido"
-
-                    // Configurar icono con tamaño adecuado
-                    ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_red_marker)?.let { icon ->
-                        icon.setBounds(0, 0, 80, 80)
-                        setIcon(icon)
-                    }
+                    title = nombreUsuarioSeguido
+                    icon = ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_red_marker)
                 }
                 map.overlays.add(trackedUserMarker)
             } else {
                 trackedUserMarker?.position = location
+                trackedUserMarker?.title = nombreUsuarioSeguido
             }
             map.invalidate()
+        } ?: run {
+            trackedUserMarker?.let {
+                map.overlays.remove(it)
+                trackedUserMarker = null
+                map.invalidate()
+            }
         }
     }
 
@@ -249,6 +373,8 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
         if (currentLocation != null && trackedUserLocation != null) {
             val distance = calculateDistance(currentLocation!!, trackedUserLocation!!)
             tvDistancia.text = "Distancia: %.2f metros".format(distance)
+        } else {
+            tvDistancia.text = "Calculando distancia..."
         }
     }
 
@@ -262,29 +388,36 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
         return results[0]
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            LOCATION_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    startLocationUpdates()
-                    startTrackingUser()
-                } else {
-                    Toast.makeText(this, "Se requieren permisos de ubicación", Toast.LENGTH_SHORT).show()
-                    finish()
+    private fun loadUserInfo() {
+        database.getReference("users").child(userIdToTrack)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    nombreUsuarioSeguido = snapshot.child("name").getValue(String::class.java) ?: "Usuario"
+                    tvNombreUsuario.text = "Siguiendo a: $nombreUsuarioSeguido"
+                    trackedUserMarker?.title = nombreUsuarioSeguido
+                    map.invalidate()
                 }
-            }
-        }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.w(TAG, "Error al cargar información del usuario", error.toException())
+                    tvNombreUsuario.text = "Siguiendo a: Usuario desconocido"
+                }
+            })
     }
 
     override fun onResume() {
         super.onResume()
         map.onResume()
         Configuration.getInstance().load(this, getSharedPreferences("osm_prefs", MODE_PRIVATE))
+
+        // Verificar si los permisos y servicios de ubicación están activos al volver
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED && isLocationEnabled()
+        ) {
+            startLocationUpdates()
+        }
     }
 
     override fun onPause() {
@@ -295,6 +428,10 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        try {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al eliminar actualizaciones de ubicación: ${e.message}")
+        }
     }
 }

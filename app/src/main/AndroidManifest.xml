@@ -37,7 +37,10 @@
         <activity android:name=".DetalleUsuarioActivity" />
 
         <activity
-            android:name=".DistanciaUsuarioActivity" />
+            android:name=".DistanciaUsuarioActivity"
+            android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"
+            android:exported="false"/>
+
         <activity
             android:name=".OSMMapsActivity"
             android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"

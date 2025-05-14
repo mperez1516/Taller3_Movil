@@ -9,8 +9,8 @@ data class User(
     var identificacion: String = "",
     val status: String,
     var email: String="",
-    var latitud: Double = 0.0,
-    var longitud: Double = 0.0,
+    var latitude: Double,
+    var longitude: Double,
     val imageUrl: String
 
 )

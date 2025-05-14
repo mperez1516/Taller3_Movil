@@ -54,7 +54,9 @@ class ListaUsuariosActivity : AppCompatActivity() {
                             nombre = userSnapshot.child("name").getValue(String::class.java) ?: "",
                             email = userSnapshot.child("email").getValue(String::class.java) ?: "",
                             imageUrl = userSnapshot.child("imageUrl").getValue(String::class.java) ?: "",
-                            status = userSnapshot.child("status").getValue(String::class.java) ?: "offline"
+                            status = userSnapshot.child("status").getValue(String::class.java) ?: "offline",
+                            latitude = userSnapshot.child("latitude").getValue(Double::class.java) ?: 0.0,
+                            longitude = userSnapshot.child("longitude").getValue(Double::class.java) ?: 0.0
                         )
                         if (user.status == "available") {
                             usersList.add(user)
@@ -121,10 +123,12 @@ class ListaUsuariosActivity : AppCompatActivity() {
             emailTextView.text = user.email
             imageView.setImageResource(R.drawable.ic_default_user)
 
-            // Configurar el listener del botón
+            // Listener del botón con latitud y longitud
             btnVerPosicion.setOnClickListener {
                 val intent = Intent(this@ListaUsuariosActivity, DetalleUsuarioActivity::class.java)
                 intent.putExtra("userId", user.userId)
+                intent.putExtra("latitude", user.latitude)
+                intent.putExtra("longitude", user.longitude)
                 startActivity(intent)
             }
 
