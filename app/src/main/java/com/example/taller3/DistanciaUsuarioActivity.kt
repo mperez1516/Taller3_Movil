@@ -5,6 +5,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
@@ -27,6 +31,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.ScaleBarOverlay
+import java.util.Random
 import java.io.File
 
 class DistanciaUsuarioActivity : AppCompatActivity() {
@@ -45,6 +50,7 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
     private var currentUserMarker: Marker? = null
     private lateinit var userIdToTrack: String
     private var nombreUsuarioSeguido: String = ""
+    private val random = Random()
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -76,6 +82,7 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "DistanciaUsuarioAct"
         private const val DEFAULT_ZOOM_LEVEL = 15.0
+        private const val MARKER_ICON_SIZE = 100
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -331,35 +338,43 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
     private fun updateCurrentUserMarker() {
         currentLocation?.let { location ->
             if (currentUserMarker == null) {
-                currentUserMarker = Marker(map).apply {
-                    position = location
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    title = "Mi ubicación"
-                    icon = ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_blue_marker)
+                currentUserMarker = addMarkerToMap(
+                    location.latitude,
+                    location.longitude,
+                    "Mi ubicación",
+                    R.drawable.ic_blue_marker
+                ).apply {
+                    setOnMarkerClickListener { marker, _ ->
+                        showRandomDistanceToast(marker)
+                        true
+                    }
                 }
-                map.overlays.add(currentUserMarker)
             } else {
                 currentUserMarker?.position = location
+                map.invalidate()
             }
-            map.invalidate()
         }
     }
 
     private fun updateTrackedUserMarker() {
         trackedUserLocation?.let { location ->
             if (trackedUserMarker == null) {
-                trackedUserMarker = Marker(map).apply {
-                    position = location
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    title = nombreUsuarioSeguido
-                    icon = ContextCompat.getDrawable(this@DistanciaUsuarioActivity, R.drawable.ic_red_marker)
+                trackedUserMarker = addMarkerToMap(
+                    location.latitude,
+                    location.longitude,
+                    nombreUsuarioSeguido,
+                    R.drawable.ic_red_marker
+                ).apply {
+                    setOnMarkerClickListener { marker, _ ->
+                        showRandomDistanceToast(marker)
+                        true
+                    }
                 }
-                map.overlays.add(trackedUserMarker)
             } else {
                 trackedUserMarker?.position = location
                 trackedUserMarker?.title = nombreUsuarioSeguido
+                map.invalidate()
             }
-            map.invalidate()
         } ?: run {
             trackedUserMarker?.let {
                 map.overlays.remove(it)
@@ -367,6 +382,40 @@ class DistanciaUsuarioActivity : AppCompatActivity() {
                 map.invalidate()
             }
         }
+    }
+
+    private fun showRandomDistanceToast(marker: Marker) {
+        val randomDistance = 1 + random.nextInt(1000) // Número aleatorio entre 1 y 1000 metros
+        val message = when {
+            marker == currentUserMarker -> "Estás a $randomDistance metros de este punto"
+            marker == trackedUserMarker -> "$nombreUsuarioSeguido está a $randomDistance metros de ti"
+            else -> "Distancia: $randomDistance metros"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun addMarkerToMap(latitude: Double, longitude: Double, title: String, iconResId: Int): Marker {
+        val marker = Marker(map).apply {
+            position = GeoPoint(latitude, longitude)
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+
+            // Escalar el icono del marcador
+            ContextCompat.getDrawable(this@DistanciaUsuarioActivity, iconResId)?.let { drawable ->
+                val bitmap = drawable.toBitmap(MARKER_ICON_SIZE, MARKER_ICON_SIZE, Bitmap.Config.ARGB_8888)
+                icon = BitmapDrawable(resources, bitmap)
+            }
+        }
+        map.overlays.add(marker)
+        map.invalidate()
+        return marker
+    }
+
+    private fun Drawable.toBitmap(width: Int, height: Int, config: Bitmap.Config): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, config)
+        val canvas = Canvas(bitmap)
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+        return bitmap
     }
 
     private fun updateDistance() {

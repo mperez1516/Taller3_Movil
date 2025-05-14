@@ -64,7 +64,7 @@ class ListaUsuariosActivity : AppCompatActivity() {
                     }
                 }
                 adapter.notifyDataSetChanged()
-            }
+             }
 
             override fun onCancelled(error: DatabaseError) {
                 Toast.makeText(this@ListaUsuariosActivity, "Error al cargar usuarios", Toast.LENGTH_SHORT).show()

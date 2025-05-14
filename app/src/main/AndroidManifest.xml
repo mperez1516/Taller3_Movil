@@ -46,6 +46,8 @@
             android:name=".OSMMapsActivity"
             android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"
             android:exported="false" />
+        
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
