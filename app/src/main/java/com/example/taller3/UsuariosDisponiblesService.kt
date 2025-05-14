@@ -6,92 +6,106 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import com.google.firebase.database.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import java.util.concurrent.Executors
 
 class UsuariosDisponiblesService : Service() {
 
-    private lateinit var database: FirebaseDatabase
     private lateinit var usuariosRef: DatabaseReference
     private var usuariosListener: ValueEventListener? = null
-    private val notifiedUsers = mutableSetOf<String>()
-    private val CHANNEL_ID = "UsuariosDisponiblesChannel"
+    private val executor = Executors.newSingleThreadExecutor()
 
     override fun onCreate() {
         super.onCreate()
-        database = FirebaseDatabase.getInstance()
-        usuariosRef = database.getReference("users")
-        createNotificationChannel()
-        startForegroundService()
+        try {
+            val database = FirebaseDatabase.getInstance()
+            database.setPersistenceEnabled(true)
+            usuariosRef = database.getReference("users")
+
+            createNotificationChannel()
+            startForegroundService()
+            setupUserListener()
+
+            Log.d("UsuariosService", "Servicio creado correctamente")
+        } catch (e: Exception) {
+            Log.e("UsuariosService", "Error en onCreate: ${e.message}")
+            stopSelf()
+        }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "Notificaciones de Usuarios Disponibles",
+            val channel = NotificationChannel(
+                "usuarios_channel",
+                "Usuarios Disponibles",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                description = "Notifica usuarios disponibles"
+            }
+
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
+            manager.createNotificationChannel(channel)
         }
     }
 
     private fun startForegroundService() {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, "usuarios_channel")
             .setContentTitle("Monitor de Usuarios")
-            .setContentText("Escuchando cambios en disponibilidad")
+            .setContentText("Escuchando cambios")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(1, notification)
-        }
-
-        startListeningForUserChanges()
+        startForeground(1, notification)
     }
 
-    private fun startListeningForUserChanges() {
+    private fun setupUserListener() {
         usuariosListener = usuariosRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                for (userSnapshot in snapshot.children) {
-                    val userId = userSnapshot.key ?: continue
-                    val estado = userSnapshot.child("available").getValue(Boolean::class.java) ?: false
-                    val nombre = userSnapshot.child("name").getValue(String::class.java) ?: "Usuario desconocido"
+                executor.execute {
+                    try {
+                        snapshot.children.forEach { userSnapshot ->
+                            val disponible = userSnapshot.child("available").getValue(Boolean::class.java) ?: false
+                            val nombre = userSnapshot.child("name").getValue(String::class.java)
 
-                    if (estado && !notifiedUsers.contains(userId)) {
-                        showUserAvailableToast(nombre)
-                        notifiedUsers.add(userId)
-                    } else if (!estado) {
-                        notifiedUsers.remove(userId)
+                            if (disponible && nombre != null) {
+                                showNotification(nombre)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("UsuariosService", "Error en onDataChange: ${e.message}")
                     }
                 }
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Toast.makeText(
-                    this@UsuariosDisponiblesService,
-                    "Error al escuchar cambios de usuarios",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Log.e("UsuariosService", "Error en Firebase: ${error.message}")
             }
         })
     }
 
-    private fun showUserAvailableToast(userName: String) {
-        Handler(mainLooper).post {
-            Toast.makeText(
-                applicationContext,
-                "$userName está ahora disponible",
-                Toast.LENGTH_SHORT
-            ).show()
+    private fun showNotification(userName: String) {
+        Handler(Looper.getMainLooper()).post {
+            try {
+                Toast.makeText(
+                    applicationContext,
+                    "$userName está disponible",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: Exception) {
+                Log.e("UsuariosService", "Error al mostrar Toast: ${e.message}")
+            }
         }
     }
 
@@ -99,24 +113,27 @@ class UsuariosDisponiblesService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        usuariosListener?.let {
-            usuariosRef.removeEventListener(it)
+        try {
+            usuariosListener?.let { usuariosRef.removeEventListener(it) }
+            executor.shutdown()
+            Log.d("UsuariosService", "Servicio destruido correctamente")
+        } catch (e: Exception) {
+            Log.e("UsuariosService", "Error en onDestroy: ${e.message}")
         }
     }
 
     companion object {
-        fun startService(context: Context) {
-            val intent = Intent(context, UsuariosDisponiblesService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+        fun start(context: Context) {
+            try {
+                val intent = Intent(context, UsuariosDisponiblesService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                Log.e("UsuariosService", "Error al iniciar servicio: ${e.message}")
             }
-        }
-
-        fun stopService(context: Context) {
-            val intent = Intent(context, UsuariosDisponiblesService::class.java)
-            context.stopService(intent)
         }
     }
 }
